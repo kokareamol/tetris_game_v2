@@ -1,0 +1,84 @@
+pipeline {
+    agent any
+    
+    tools{
+        jdk 'jdk17'
+        nodejs 'node16'
+    }
+    
+    environment {
+        SCANNER_HOME=tool 'sonar-scanner'
+    }
+
+    stages {
+        stage('git checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/kokareamol/tetris_game_v2.git'
+            }
+        }
+        
+        stage("Sonarqube Analysis "){
+            steps{
+                withSonarQubeEnv('sonar-server') {
+                    sh ''' $SCANNER_HOME/bin/sonar-scanner -Dsonar.projectName=tetris-v3 \
+                    -Dsonar.projectKey=tetris-v3 '''
+                }
+            }
+        }
+        
+        stage("Sonarqube QG"){
+            steps{
+                script {
+                waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+                }
+            }
+        }
+        
+        stage("dependency install"){
+            steps{
+                sh 'npm install'
+            }
+        }
+        
+        // stage('OWASP DP SCAN') {
+        //     steps {
+        //         dependencyCheck additionalArguments: '--scan ./ --disableYarnAudit --disableNodeAudit', odcInstallation: 'DP-Check'
+        //         dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+        //     }
+        // }
+        
+        // stage('TRIVY FS SCAN') {
+        //     steps {
+        //         sh "trivy fs . > trivyfs.txt"
+        //     }
+        // }
+        
+        stage('docker build and push') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker', toolName: 'docker') {
+                        sh '''
+                        docker build -t tetrisv3 .
+                        docker tag tetrisv3 kokareamol/tetrisv3:latest
+                        docker push kokareamol/tetrisv3:latest
+                        '''
+                  }
+                }
+            }
+        }
+        
+        // stage('TRIVY IMAGE SCAN') {
+        //     steps {
+        //         sh "trivy image kokareamol/tetrisv3:latest > trivyimage.txt"
+        //     }
+        // }
+        
+        
+        // stage('Trigger manifest') {
+        //     steps {
+        //         build job: 'manifest', wait:true
+        //     }
+        // }
+        
+    }
+}
